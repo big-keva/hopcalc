@@ -1,0 +1,181 @@
+# include "hopcalc.hpp"
+# include <mtc/test-it-easy.hpp>
+
+namespace hopcalc
+{
+  auto  ExprLen( const char* pbeg, const char* pend ) -> size_t;
+
+  auto  ExprLen( const char* pbeg ) -> size_t
+    {  return ExprLen( pbeg, pbeg + strlen( pbeg ) );  }
+  auto  ExprLen( std::string_view view ) -> size_t
+    {  return ExprLen( view.data(), view.data() + view.size() );  }
+}
+
+using namespace hopcalc;
+
+struct UserData: IUserData, protected mtc::zmap
+{
+  auto  Get( std::string_view key ) -> mtc::zval override
+  {
+    auto  pvalue = get( key );
+
+    return pvalue != nullptr ? *pvalue : mtc::zval();
+  }
+  auto  Set( std::string_view key, const mtc::zval& val ) -> mtc::zval& override
+  {
+    return *put( key, val );
+  }
+};
+
+TestItEasy::RegisterFunc  storage_fs( []()
+  {
+    TEST_CASE( "hopcalc" )
+    {
+      SECTION( "ExprLen breaks strings to expressions" )
+      {
+        SECTION( "called with empty string, it causes exception" )
+        {
+          REQUIRE_EXCEPTION( ExprLen( "" ), std::invalid_argument );
+        }
+        SECTION( "called with spaced string, it causes exception" )
+        {
+          REQUIRE_EXCEPTION( ExprLen( " a" ), std::invalid_argument );
+        }
+        SECTION( "for simple strings, it returns length" )
+        {
+          REQUIRE( ExprLen( "a" ) == 1 );
+          REQUIRE( ExprLen( "12" ) == 2 );
+          REQUIRE( ExprLen( "196.4" ) == 5 );
+          REQUIRE( ExprLen( "-1" ) == 1 );
+        }
+        SECTION( "meeting spaces, braces or quotes, it stops" )
+        {
+          REQUIRE( ExprLen( "abc(" ) == 3 );
+          REQUIRE( ExprLen( "12[" ) == 2 );
+          REQUIRE( ExprLen( "196.4\"" ) == 5 );
+          REQUIRE( ExprLen( "196.4\''" ) == 5 );
+          REQUIRE( ExprLen( "196.4 " ) == 5 );
+          REQUIRE( ExprLen( "-196.4 " ) == 1 );
+        }
+        SECTION( "for braced expressions, it searches to the end" )
+        {
+          REQUIRE( ExprLen( "(abc def) " ) == 9 );
+          REQUIRE( ExprLen( "-(abc def)" ) == 1 );
+          REQUIRE( ExprLen( "[12]a" ) == 4 );
+          REQUIRE( ExprLen( "\"196.4\"6" ) == 7 );
+          REQUIRE( ExprLen( "\'196.4\'." ) == 7 );
+        }
+        SECTION( "for unpaired braces, it causes exception" )
+        {
+          REQUIRE_EXCEPTION( ExprLen( "(abc def] " ), std::invalid_argument );
+          REQUIRE_EXCEPTION( ExprLen( "[12[a" ), std::invalid_argument );
+          REQUIRE_EXCEPTION( ExprLen( "\"196.4" ), std::invalid_argument );
+          REQUIRE_EXCEPTION( ExprLen( "\'196.4" ), std::invalid_argument );
+        }
+        SECTION( "escaping supported in string literals" )
+        {
+          REQUIRE( ExprLen( "\"abc\\\"de\"") == 9 );
+          REQUIRE( ExprLen( "\'abc\\\'de\'") == 9 );
+        }
+      }
+      SECTION( "Compile() creates the compiled expressions" )
+      {
+        REQUIRE( Compile( "3 + 5" ).size() != 0 );
+        REQUIRE( Compile( "\"a\" + 1" ).size() != 0 );
+        REQUIRE( Compile( "1 + \"a\"" ).size() != 0 );
+        REQUIRE( Compile( "1 + 3 * 7" ).size() != 0 );
+        REQUIRE( Compile( "-1 + 3 * 7" ).size() != 0 );
+        REQUIRE( Compile( "$x" ).size() != 0 );
+        REQUIRE( Compile( "$x && $y.data" ).size() != 0 );
+      }
+      SECTION( "Evaluate() evaluates compiled expressions" )
+      {
+        SECTION( "arythmetic and string" )
+        {
+          REQUIRE( Evaluate( Compile( "3 + 4" ) ).eq( 7 ) );
+          REQUIRE( Evaluate( Compile( "\"3\" + \"4\"" ) ).eq( "34" ) );
+          REQUIRE( Evaluate( Compile( "0 && $a" ) ).eq( 0 ) );
+          REQUIRE( Evaluate( Compile( "3 || $a" ) ).eq( 3 ) );
+          REQUIRE( Evaluate( Compile( "-3" ) ).eq( -3 ) );
+          REQUIRE( Evaluate( Compile( "1 +-3" ) ).eq( -2 ) );
+        }
+        SECTION( "compare operations" )
+        {
+          REQUIRE( Evaluate( Compile( "1 == 2" ) ).eq( false ) );
+          REQUIRE( Evaluate( Compile( "2 == 2" ) ).eq( true ) );
+          REQUIRE( Evaluate( Compile( "\"aaa\" == \"bbb\"" ) ).eq( false ) );
+          REQUIRE( Evaluate( Compile( "\"aaa\" == \"aaa\"" ) ).eq( true ) );
+        }
+        SECTION( "long boolean expressions" )
+        {
+          REQUIRE( Evaluate( Compile( "1 == 2 || \"a\" == 4" ) ).eq( false ) );
+          REQUIRE( Evaluate( Compile( "2 == 2 || \"a\" == 4" ) ).eq( true ) );
+        }
+        SECTION( "expressions with braces" )
+        {
+          REQUIRE( Evaluate( Compile( "(1 + 2) * 4" ) ).eq( 12 ) );
+          REQUIRE( Evaluate( Compile( "-1.7 + (1 + 2) * 4" ) ).eq( 10.3 ) );
+          REQUIRE( Evaluate( Compile( "-1.7 - -1.7" ) ).eq( 0 ) );
+          REQUIRE( Evaluate( Compile( "7 - 2 - 2" ) ).eq( 3 ) );
+          REQUIRE( Evaluate( Compile( "7 + -(2 - 1)" ) ).eq( 6 ) );
+          REQUIRE( Evaluate( Compile( "7 - -(2 - 1)" ) ).eq( 8 ) );
+          REQUIRE( Evaluate( Compile( "-$a" ), []( std::string_view ){  return mtc::zval( 7 );  } ).eq( -7 ) );
+          REQUIRE( Evaluate( Compile( "(1+2)*(3+4)" ) ).eq( 21 ) );
+        }
+        SECTION( "ternary operator" )
+        {
+          REQUIRE( Evaluate( Compile( "7 ? 1 : \"one\"" ) ).eq( 1 ) );
+          REQUIRE( Evaluate( Compile( "6 + (7 ? 1 : \"one\")" ) ).eq( 7 ) );
+          REQUIRE( Evaluate( Compile( "(7 ? 1 : \"one\") + 11" ) ).eq( 12 ) );
+          REQUIRE( Evaluate( Compile( "2 * ((7 ? 1 : \"one\") + 11)" ) ).eq( 24 ) );
+          REQUIRE( Evaluate( Compile( "(1 == 1) ? \"zero\" : 0" ) ).eq( "zero" ) );
+          REQUIRE( Evaluate( Compile( "(1 == 2) ? \"zero\" : 0" ) ).eq( 0 ) );
+        }
+        SECTION( "assignment" )
+        {
+          UserData  func;
+          mtc::zval zval;
+
+          REQUIRE( Evaluate( Compile( "7 ? 1 : \"one\"" ) ).eq( 1 ) );
+          REQUIRE( Evaluate( Compile( "6 + (7 ? 1 : \"one\")" ) ).eq( 7 ) );
+          REQUIRE( Evaluate( Compile( "(7 ? 1 : \"one\") + 11" ) ).eq( 12 ) );
+          REQUIRE( Evaluate( Compile( "(1 == 1) ? \"zero\" : 0" ) ).eq( "zero" ) );
+          REQUIRE( Evaluate( Compile( "(1 == 2) ? \"zero\" : 0" ) ).eq( 0 ) );
+          REQUIRE( Evaluate( Compile( "$a = \"zzz\"" ), &func ).eq( "zzz" ) );
+          REQUIRE( Evaluate( Compile( "$a = \"yyy\"" ), [&]( std::string_view, const mtc::zval& zv ) -> mtc::zval&
+            {  return zval = zv;  }).eq( "yyy" ) );
+          REQUIRE( zval.eq( "yyy" ) );
+        }
+      }
+    }
+  } );
+
+# include <chrono>
+
+template <unsigned Lops, class Func>
+auto  Measure( Func func ) -> double
+{
+  auto  tstart = std::chrono::steady_clock::now();
+
+  for ( unsigned i = 0; i < Lops; ++i )
+    func();
+
+  return std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::steady_clock::now() - tstart ).count();
+}
+
+int   main()
+{
+  UserData func;
+
+//  auto  expr = Compile( "$a + $b + $c" );
+  auto  expr = Compile( "(($1 + 1) + ($b - 1)) / $c" );
+ // fprintf( stdout, "%s\n", Evaluate( expr, []( const char*, size_t ) -> mtc::zval{  return 14;  } ).to_string().c_str() );
+
+//  return 0;
+  fprintf( stdout, "%.2f\n", Measure<1000000>( [&]()
+    {
+      Evaluate( expr, { []( std::string_view ) -> mtc::zval{  return 14;  } } );
+    } ) );
+
+  return TestItEasy::Conclusion();
+}
