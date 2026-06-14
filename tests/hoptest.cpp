@@ -1,4 +1,4 @@
-# include "hopcalc.hpp"
+# include "../hopcalc.hpp"
 # include <mtc/test-it-easy.hpp>
 
 namespace hopcalc
@@ -27,6 +27,24 @@ struct UserData: IUserData, protected mtc::zmap
   }
 };
 
+template <class Call>
+auto  GetSyntaxError( Call call ) -> SyntaxError
+{
+  try
+  {
+    call();
+    return { "no error occured", -1 };
+  }
+  catch ( const SyntaxError& x )
+  {
+    return x;
+  }
+  catch ( ... )
+  {
+    return { "unknown error", -1 };
+  }
+}
+
 TestItEasy::RegisterFunc  storage_fs( []()
   {
     TEST_CASE( "hopcalc" )
@@ -35,7 +53,7 @@ TestItEasy::RegisterFunc  storage_fs( []()
       {
         SECTION( "called with empty string, it causes exception" )
         {
-          REQUIRE_EXCEPTION( ExprLen( "" ), std::invalid_argument );
+          REQUIRE( ExprLen( "" ) == 0 );
         }
         SECTION( "called with spaced string, it causes exception" )
         {
@@ -87,6 +105,32 @@ TestItEasy::RegisterFunc  storage_fs( []()
         REQUIRE( Compile( "-1 + 3 * 7" ).size() != 0 );
         REQUIRE( Compile( "$x" ).size() != 0 );
         REQUIRE( Compile( "$x && $y.data" ).size() != 0 );
+
+        REQUIRE( Compile( "-pow(3.0, 4)" ).size() != 0 );
+
+        REQUIRE( Compile( "[]" ).size() != 0 );
+        REQUIRE( Compile( "[1]" ).size() != 0 );
+        REQUIRE( Compile( "[1, 2]" ).size() != 0 );
+        REQUIRE( Compile( "[1, 2, \"a\"]" ).size() != 0 );
+        REQUIRE( Compile( "[1, 2, \"a\", [2.57, 3.14]]" ).size() != 0 );
+
+        REQUIRE( Compile( "2 in [1, 2, \"a\", [2.57, 3.14]]" ).size() != 0 );
+
+        SECTION( "it checks argument count for functions" )
+        {
+          REQUIRE_EXCEPTION( Compile( "pow()" ), hopcalc::SyntaxError );
+            REQUIRE( GetSyntaxError( [](){  Compile( "pow()" );  } ).GetOffset() == 4 );
+          REQUIRE_EXCEPTION( Compile( "pow(3.0)" ), hopcalc::SyntaxError );
+            REQUIRE( GetSyntaxError( [](){  Compile( "pow(3.0)" );  } ).GetOffset() == 7 );
+          REQUIRE_EXCEPTION( Compile( "pow(3.0, 4, 2)" ), hopcalc::SyntaxError );
+            REQUIRE( GetSyntaxError( [](){  Compile( "pow(3.0, 4, 2)" );  } ).GetOffset() == 12 );
+          REQUIRE_EXCEPTION( Compile( "[, 2]" ), hopcalc::SyntaxError );
+            REQUIRE( GetSyntaxError( [](){  Compile( "[, 2]" );  } ).GetOffset() == 1 );
+          REQUIRE_EXCEPTION( Compile( "[1, [2]" ), hopcalc::SyntaxError );
+            REQUIRE( GetSyntaxError( [](){  Compile( "[1, [2]" );  } ).GetOffset() == 7 );
+          REQUIRE_EXCEPTION( Compile( "[1, 2, $a]" ), hopcalc::SyntaxError );
+            REQUIRE( GetSyntaxError( [](){  Compile( "[1, 2, $a]" );  } ).GetOffset() == 7 );
+        }
       }
       SECTION( "Evaluate() evaluates compiled expressions" )
       {
@@ -98,6 +142,7 @@ TestItEasy::RegisterFunc  storage_fs( []()
           REQUIRE( Evaluate( Compile( "3 || $a" ) ).eq( 3 ) );
           REQUIRE( Evaluate( Compile( "-3" ) ).eq( -3 ) );
           REQUIRE( Evaluate( Compile( "1 +-3" ) ).eq( -2 ) );
+          REQUIRE( Evaluate( Compile( "[1, 2, '3']" ) ).eq( mtc::array_zval{ 1, 2, "3" } ) );
         }
         SECTION( "compare operations" )
         {
@@ -105,6 +150,10 @@ TestItEasy::RegisterFunc  storage_fs( []()
           REQUIRE( Evaluate( Compile( "2 == 2" ) ).eq( true ) );
           REQUIRE( Evaluate( Compile( "\"aaa\" == \"bbb\"" ) ).eq( false ) );
           REQUIRE( Evaluate( Compile( "\"aaa\" == \"aaa\"" ) ).eq( true ) );
+          REQUIRE( Evaluate( Compile( "\"aaa\" == \"aaa\"" ) ).eq( true ) );
+
+          REQUIRE( Evaluate( Compile( "2 in [1, 2, \"a\", [2.57, 3.14]]" ) ).eq( true ) );
+          REQUIRE( Evaluate( Compile( "5 in [1, 2, \"a\", [2.57, 3.14]]" ) ).eq( false ) );
         }
         SECTION( "long boolean expressions" )
         {
@@ -121,6 +170,15 @@ TestItEasy::RegisterFunc  storage_fs( []()
           REQUIRE( Evaluate( Compile( "7 - -(2 - 1)" ) ).eq( 8 ) );
           REQUIRE( Evaluate( Compile( "-$a" ), []( std::string_view ){  return mtc::zval( 7 );  } ).eq( -7 ) );
           REQUIRE( Evaluate( Compile( "(1+2)*(3+4)" ) ).eq( 21 ) );
+        }
+        SECTION( "functions" )
+        {
+          REQUIRE( Evaluate( Compile( "1 + pi()" ) ).gt( 4.1411 ) );
+          REQUIRE( Evaluate( Compile( "1 + pi()" ) ).lt( 4.1416 ) );
+          REQUIRE( Evaluate( Compile( "sin(pi()/2) > 0.99" ) ).ne( 0 ) );
+          REQUIRE( Evaluate( Compile( "cos(pi()/2) < 0.01" ) ).ne( 0 ) );
+          REQUIRE( Evaluate( Compile( "cos(pi()/2 + pi()/6) < 0" ) ).ne( 0 ) );
+          REQUIRE( Evaluate( Compile( "pow(3,4)" ) ).eq( 81 ) );
         }
         SECTION( "ternary operator" )
         {
