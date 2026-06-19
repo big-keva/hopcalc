@@ -204,6 +204,28 @@ TestItEasy::RegisterFunc  storage_fs( []()
             {  return zval = zv;  }).eq( "yyy" ) );
           REQUIRE( zval.eq( "yyy" ) );
         }
+        SECTION( "some expressions are transitive" )
+        {
+          REQUIRE( Evaluate( Compile( "1 + \"a\"" ) ).eq( "1a" ) );
+          REQUIRE( Evaluate( Compile( "\"a\" + 1" ) ).eq( "a1" ) );
+        }
+      }
+      SECTION( "Expression constructor" )
+      {
+        SECTION( "it constructs expressions" )
+        {
+          REQUIRE( Evaluate( Expression( "aaa" ) += "bbb" ).eq( "aaabbb" ) );
+          REQUIRE( Evaluate( Expression( 721 ) + 2 ).eq( 723 ) );
+          REQUIRE( Evaluate( Expression( 'b' ).operator_in( Expression( "abc" ) ) ).eq( true ) );
+          REQUIRE( Evaluate( Expression( 'q' ).operator_in( Expression( "abc" ) ) ).eq( false ) );
+          REQUIRE( Evaluate( Expression( "b" ).operator_in( Expression( { "a", "b", "c" } ) ) ).eq( true ) );
+          REQUIRE( Evaluate( Expression( 7 ).operator_in( mtc::array_int32{ 2, 3, 11 } ) ).eq( false ) );
+          REQUIRE( Evaluate( Expression( 11 ).operator_in( mtc::array_int32{ 2, 3, 11 } ) ).eq( true ) );
+          REQUIRE( Evaluate( sqrt( Expression( 81 ) ) ).eq( 9 ) );
+          REQUIRE( Evaluate( sqrt( Expression( "abc" ) ) ).get_type() == mtc::zval::z_double );
+          REQUIRE( Evaluate( sqrt( Expression( "abc" ) ) ).eq( 0 ) );
+          REQUIRE( Evaluate( pow( Expression( 2 ), 4 ) ).eq( 16 ) );
+        }
       }
     }
   } );

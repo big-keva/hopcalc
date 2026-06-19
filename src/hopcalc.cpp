@@ -135,6 +135,8 @@ namespace hopcalc
     { "sqrt",  1, hc_sqrt  }
   };
 
+  static mtc::zval zero( 0 );
+
   auto  ExprLen( const char* pbeg, const char* pend ) -> size_t;
 
   auto  NoSpace( const char* pbeg, const char* pend ) -> const char*
@@ -327,6 +329,56 @@ namespace hopcalc
     return zarray;
   }
 
+  inline  bool  IsConstant( const std::vector<char>& v )  {  return v.size() > 0 && v[0] == hc_const;  }
+  inline  bool  IsVariable( const std::vector<char>& v )  {  return v.size() > 0 && v[0] == hc_var;  }
+
+  template <class U>
+  bool  in( const mtc::zval&, const U& );
+
+  template <class U>
+  bool  in( const mtc::zval& t, const std::vector<U>& u )
+  {
+    return std::find_if( u.begin(), u.end(), [&]( const U& u ) {  return t.eq( u );  } ) != u.end();
+  }
+
+  template <class C>
+  bool  in( const mtc::zval& t, const std::basic_string<C>& u )
+  {
+    switch ( t.get_type() )
+    {
+      case mtc::zval::z_char:
+        return u.find( *t.get_char() ) != mtc::charstr::npos;
+      case mtc::zval::z_byte:
+        return u.find( *t.get_byte() ) != mtc::charstr::npos;
+      case mtc::zval::z_charstr:
+        return mtc::w_strstr( u.c_str(), t.get_charstr()->c_str() ) != nullptr;
+      case mtc::zval::z_widestr:
+        return mtc::w_strstr( u.c_str(), t.get_widestr()->c_str() ) != nullptr;
+      default:
+        return false;
+    }
+  }
+
+  bool  in( const mtc::zval& what, const mtc::zval& upset )
+  {
+    return
+      upset.get_type() == mtc::zval::z_charstr      ? in( what, *upset.get_charstr() ) :
+      upset.get_type() == mtc::zval::z_widestr      ? in( what, *upset.get_widestr() ) :
+      upset.get_type() == mtc::zval::z_array_char   ? in( what, *upset.get_array_char() ) :
+      upset.get_type() == mtc::zval::z_array_byte   ? in( what, *upset.get_array_byte() ) :
+      upset.get_type() == mtc::zval::z_array_int16  ? in( what, *upset.get_array_int16() ) :
+      upset.get_type() == mtc::zval::z_array_word16 ? in( what, *upset.get_array_word16() ) :
+      upset.get_type() == mtc::zval::z_array_int32  ? in( what, *upset.get_array_int32() ) :
+      upset.get_type() == mtc::zval::z_array_word32 ? in( what, *upset.get_array_word32() ) :
+      upset.get_type() == mtc::zval::z_array_int64  ? in( what, *upset.get_array_int64() ) :
+      upset.get_type() == mtc::zval::z_array_word64 ? in( what, *upset.get_array_word64() ) :
+      upset.get_type() == mtc::zval::z_array_float  ? in( what, *upset.get_array_float() ) :
+      upset.get_type() == mtc::zval::z_array_double ? in( what, *upset.get_array_double() ) :
+      upset.get_type() == mtc::zval::z_array_charstr ? in( what, *upset.get_array_charstr() ) :
+      upset.get_type() == mtc::zval::z_array_widestr ? in( what, *upset.get_array_widestr() ) :
+      upset.get_type() == mtc::zval::z_array_zval   ? in( what, *upset.get_array_zval() ) : what.eq( upset );
+  }
+
   auto  Compile( const char* pbeg, const char* pend, const char* orig ) -> std::vector<char>
   {
     auto        output = std::vector<char>();
@@ -396,6 +448,45 @@ namespace hopcalc
       auto  lexp = Compile( origin, divbeg, orig );
       auto  rexp = Compile( NoSpace( divbeg + divlen, pend ), pend, orig );
 
+    // выполнить предвычисление значений, если возможно
+      if ( IsConstant( lexp ) && IsConstant( rexp ) )
+      {
+        mtc::zval lval;
+        mtc::zval rval;
+
+        lval.FetchFrom( (const char*)lexp.data() + 1 );
+        rval.FetchFrom( (const char*)rexp.data() + 1 );
+
+        switch ( opcode )
+        {
+          case hc_mul:  return std::move( *(lval *= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_div:  return std::move( *(lval /= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_mod:  return std::move( *(lval %= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_add:  return std::move( *(lval += rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_sub:  return std::move( *(lval -= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_shl:  return std::move( *(lval <<= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_shr:  return std::move( *(lval >>= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+
+          case hc_lt:   return std::move( *mtc::zval( lval.lt( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_le:   return std::move( *mtc::zval( lval.le( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_gt:   return std::move( *mtc::zval( lval.gt( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_ge:   return std::move( *mtc::zval( lval.ge( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+
+          case hc_eq:   return std::move( *mtc::zval( lval.eq( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_ne:   return std::move( *mtc::zval( lval.ne( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+
+          case hc_in:   return std::move( *mtc::zval( in( lval, rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+
+          case hc_b_and:return std::move( *(lval &= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_b_xor:return std::move( *(lval ^= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_b_or: return std::move( *(lval |= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+
+          case hc_l_and:return std::move( *mtc::zval( lval.ne( 0 ) && rval.ne( 0 ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          case hc_l_or: return std::move( *mtc::zval( lval.ne( 0 ) || rval.ne( 0 ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+          default:      break;
+        }
+      }
+
       if ( opcode != hc_colon )
         output.push_back( opcode );
 
@@ -407,12 +498,20 @@ namespace hopcalc
 
     if ( *origin == '-' || *origin == '+' )
     {
-      auto  code = Compile( NoSpace( origin + 1, pend ), pend, orig );
+      auto  avalue = Compile( NoSpace( origin + 1, pend ), pend, orig );
 
-      if ( *origin == '-' )
-        output.push_back( hc_neg );
+      if ( *origin == '-' && IsConstant( avalue ) )
+      {
+        mtc::zval zval;
 
-      output.insert( output.end(), code.begin(), code.end() );
+        zval.FetchFrom( (const char*)avalue.data() + 1 );
+
+        if ( zval.is_numeric() )
+          return std::move( *(zero - zval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
+      }
+
+      output.insert( output.begin(), hc_neg );
+      output.insert( output.end(), avalue.begin(), avalue.end() );
       return output;
     }
 
@@ -512,38 +611,6 @@ namespace hopcalc
     return pbeg;
   }
 
-  template <class T, class U>
-  bool  in( const T&, const U& );
-
-  template <class T, class U>
-  bool  in( const T& t, const std::vector<U>& u )
-  {
-    return std::find_if( u.begin(), u.end(), [&]( const U& u ) {  return u.eq( t );  } ) != u.end();
-  }
-
-  template <>
-  bool  in( const mtc::zval& t, const mtc::charstr& u )
-  {
-    switch ( t.get_type() )
-    {
-      case mtc::zval::z_char:
-        return u.find( *t.get_char() ) != mtc::charstr::npos;
-      case mtc::zval::z_byte:
-        return u.find( *t.get_byte() ) != mtc::charstr::npos;
-      case mtc::zval::z_charstr:
-        return u.find( *t.get_charstr() ) != mtc::charstr::npos;
-      default:
-        return false;
-    }
-  }
-
-  bool  in( const mtc::zval& what, const mtc::zval& upset )
-  {
-    return
-      upset.get_type() == mtc::zval::z_array_zval ? in( what, *upset.get_array_zval() ) :
-      upset.get_type() == mtc::zval::z_charstr ? in( what, *upset.get_charstr() ) : what.eq( upset );
-  }
-
   struct StackEntry
   {
     unsigned    opcode;   // 0 - парсить байт-код; иначе - выполнить оператор
@@ -579,7 +646,6 @@ namespace hopcalc
   {
     using string_view = std::string_view;
 
-    static mtc::zval zero( 0 );
     constexpr int MAX_STACK = 32;
 
     mtc::zval   result;
@@ -773,7 +839,101 @@ namespace hopcalc
     return result;
   }
 
-  # if 0
+  // Expression implementation
+
+# define derive_constructor( _type_ ) \
+  Expression::Expression( _type_ t )  \
+  {  mtc::zval( t ).Serialize( ::Serialize( (std::vector<char>*)this, char(hc_const) ) );  }
+
+  derive_constructor( char )
+  derive_constructor( uint8_t )
+  derive_constructor( int16_t )
+  derive_constructor( uint16_t )
+  derive_constructor( int32_t )
+  derive_constructor( uint32_t )
+  derive_constructor( int64_t )
+  derive_constructor( uint64_t )
+  derive_constructor( float )
+  derive_constructor( double )
+  derive_constructor( const char* )
+  derive_constructor( const widechar* )
+# undef derive_constructor
+
+# define derive_constructor_copy( _type_ ) \
+  Expression::Expression( const _type_& t )  \
+    {  mtc::zval( t ).Serialize( ::Serialize( (std::vector<char>*)this, char(hc_const) ) );  }
+
+  derive_constructor_copy( mtc::charstr )
+  derive_constructor_copy( mtc::widestr )
+  derive_constructor_copy( mtc::array_char )
+  derive_constructor_copy( mtc::array_byte )
+  derive_constructor_copy( mtc::array_int16_t )
+  derive_constructor_copy( mtc::array_word16_t )
+  derive_constructor_copy( mtc::array_int32_t )
+  derive_constructor_copy( mtc::array_word32_t )
+  derive_constructor_copy( mtc::array_int64_t )
+  derive_constructor_copy( mtc::array_word64_t )
+  derive_constructor_copy( mtc::array_float )
+  derive_constructor_copy( mtc::array_double )
+  derive_constructor_copy( mtc::array_charstr )
+  derive_constructor_copy( mtc::array_widestr )
+# undef derive_constructor
+
+# define derive_binary_operator( op, code )                       \
+  Expression& Expression::operator op ( const Expression& xp )    \
+  {                                                               \
+    insert( begin(), char(hc_##code) );                           \
+    insert( end(), xp.begin(), xp.end() );                        \
+    return *this;                                                 \
+  }
+
+  derive_binary_operator( *=, mul )
+  derive_binary_operator( /=, div )
+  derive_binary_operator( %=, mod )
+  derive_binary_operator( +=, add )
+  derive_binary_operator( -=, sub )
+  derive_binary_operator( <<=, shl )
+  derive_binary_operator( >>=, shr )
+  derive_binary_operator( &=, b_and )
+  derive_binary_operator( ^=, b_xor )
+  derive_binary_operator( |=, b_or )
+# undef derive_binary_operator
+
+# define derive_binary_operator( op, code )                           \
+  Expression  Expression::operator op ( const Expression& xp ) const  \
+  {                                                                   \
+    std::vector<char> out{ char(hc_##code) };                         \
+    out.insert( out.end(), begin(), end() );                          \
+    out.insert( out.end(), xp.begin(), xp.end() );                    \
+    return out;                                                       \
+  }
+
+  derive_binary_operator( *, mul )
+  derive_binary_operator( /, div )
+  derive_binary_operator( %, mod )
+  derive_binary_operator( +, add )
+  derive_binary_operator( -, sub )
+  derive_binary_operator( <<, shl )
+  derive_binary_operator( >>, shr )
+  derive_binary_operator( <, lt )
+  derive_binary_operator( <=, le )
+  derive_binary_operator( >, gt )
+  derive_binary_operator( >=, ge )
+  derive_binary_operator( ==, eq )
+  derive_binary_operator( !=, ne )
+  derive_binary_operator( &&, l_and )
+  derive_binary_operator( ||, l_or )
+# undef derive_binary_operator
+
+  Expression  Expression::operator_in( const Expression& xp ) const
+  {
+    std::vector<char> out{ char(hc_in) };
+    out.insert( out.end(), begin(), end() );
+    out.insert( out.end(), xp.begin(), xp.end() );
+    return out;
+  }
+
+# if 0
   const char*  Evaluate( mtc::zval& zout, const char* pbeg, const char* pend, IUserData* func )
   {
     static mtc::zval zero( 0 );
@@ -864,4 +1024,40 @@ namespace hopcalc
   }
   # endif
 
+}
+
+# define derive_math( fn )                                  \
+  hopcalc::Expression fn( const hopcalc::Expression& xp )   \
+  {                                                         \
+    std::vector out{ char(hopcalc::hc_##fn) };              \
+      out.insert( out.end(), xp.begin(), xp.end() );        \
+    return out;                                             \
+  }
+
+  derive_math( abs )
+  derive_math( floor )
+  derive_math( ceil )
+  derive_math( round )
+  derive_math( acos )
+  derive_math( asin )
+  derive_math( atan )
+  derive_math( cos )
+  derive_math( cosh )
+  derive_math( sin )
+  derive_math( sinh )
+  derive_math( tan )
+  derive_math( tanh )
+  derive_math( exp )
+  derive_math( log )
+  derive_math( log2 )
+  derive_math( log10 )
+  derive_math( sqrt )
+# undef derive_math
+
+hopcalc::Expression pow( const hopcalc::Expression& x1, const hopcalc::Expression& x2 )
+{
+  std::vector out{ char(hopcalc::hc_pow) };
+  out.insert( out.end(), x1.begin(), x1.end() );
+  out.insert( out.end(), x2.begin(), x2.end() );
+  return out;
 }
