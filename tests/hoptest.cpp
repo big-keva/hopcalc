@@ -131,6 +131,11 @@ TestItEasy::RegisterFunc  storage_fs( []()
           REQUIRE_EXCEPTION( Compile( "[1, 2, $a]" ), hopcalc::SyntaxError );
             REQUIRE( GetSyntaxError( [](){  Compile( "[1, 2, $a]" );  } ).GetOffset() == 7 );
         }
+        SECTION( "it pre-calculates constant expressions" )
+        {
+          REQUIRE( Expression( Compile( "3 + 4" ) ).to_string() == "7" );
+          REQUIRE( Expression( Compile( "1 & 3" ) ).to_string() == "1" );
+        }
       }
       SECTION( "Evaluate() evaluates compiled expressions" )
       {
@@ -225,6 +230,54 @@ TestItEasy::RegisterFunc  storage_fs( []()
           REQUIRE( Evaluate( sqrt( Expression( "abc" ) ) ).get_type() == mtc::zval::z_double );
           REQUIRE( Evaluate( sqrt( Expression( "abc" ) ) ).eq( 0 ) );
           REQUIRE( Evaluate( pow( Expression( 2 ), 4 ) ).eq( 16 ) );
+        }
+        SECTION( "expressions are printable" )
+        {
+          REQUIRE( ((Expression( "a" ) + Expression::Variable( "b" )) / (3 + 2) ).to_string() == "(\"a\" + $b) / 5" );
+
+          SECTION( "- functions" )
+          {
+            REQUIRE( ( sin( Expression( 1.57 ) ) / pi() ).to_string() == "sin(1.57) / pi()" );
+          }
+
+          SECTION( "- pre-calculated operators")
+          {
+            REQUIRE( (Expression( 3 ) * 1).to_string() == "3" );
+            REQUIRE( (Expression( 3 ) / 3).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) % 2).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) + 1).to_string() == "4" );
+            REQUIRE( (Expression( 3 ) - 1).to_string() == "2" );
+            REQUIRE( (Expression( 3 ) << 1).to_string() == "6" );
+            REQUIRE( (Expression( 3 ) >> 1).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) & 1).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) ^ 1).to_string() == "2" );
+            REQUIRE( (Expression( 2 ) | 1).to_string() == "3" );
+
+            REQUIRE( (Expression( true ) && true).to_string() == "true" );
+            REQUIRE( (Expression( true ) && false).to_string() == "false" );
+            REQUIRE( (Expression( false ) && true ).to_string() == "false" );
+            REQUIRE( (Expression( false ) && false ).to_string() == "false" );
+
+            REQUIRE( (Expression( true ) || true).to_string() == "true" );
+            REQUIRE( (Expression( true ) || false).to_string() == "true" );
+            REQUIRE( (Expression( false ) || true).to_string() == "true" );
+            REQUIRE( (Expression( false ) || false).to_string() == "false" );
+
+            REQUIRE( (Expression( 3 ) *= 1).to_string() == "3" );
+            REQUIRE( (Expression( 3 ) /= 3).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) %= 2).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) += 1).to_string() == "4" );
+            REQUIRE( (Expression( 3 ) -= 1).to_string() == "2" );
+            REQUIRE( (Expression( 3 ) <<= 1).to_string() == "6" );
+            REQUIRE( (Expression( 3 ) >>= 1).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) &= 1).to_string() == "1" );
+            REQUIRE( (Expression( 3 ) ^= 1).to_string() == "2" );
+            REQUIRE( (Expression( 2 ) |= 1).to_string() == "3" );
+
+            REQUIRE( (Expression( 1 ).operator_in( std::vector<int>{ 1, 2, 3 } )).to_string() == "true" );
+          }
+
+          REQUIRE( conditional( Expression::Variable( "param" ) == 3, "a", "b" ).to_string() == "$param == 3 ? \"a\" : \"b\"" );
         }
       }
     }

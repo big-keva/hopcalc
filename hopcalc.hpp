@@ -27,6 +27,8 @@ hopcalc::Expression log2 ( const hopcalc::Expression& );
 hopcalc::Expression log10( const hopcalc::Expression& );
 hopcalc::Expression sqrt ( const hopcalc::Expression& );
 hopcalc::Expression pow  ( const hopcalc::Expression&, const hopcalc::Expression& );
+hopcalc::Expression pi   ();
+hopcalc::Expression conditional( const hopcalc::Expression&, const hopcalc::Expression&, const hopcalc::Expression& );
 
 namespace hopcalc
 {
@@ -96,8 +98,6 @@ namespace hopcalc
 
   class Expression: public std::vector<char>
   {
-    Expression( std::vector<char>&& src ): vector( std::move( src ) ) {}
-
     friend auto ::abs  ( const Expression& ) -> Expression;
     friend auto ::floor( const Expression& ) -> Expression;
     friend auto ::ceil ( const Expression& ) -> Expression;
@@ -117,8 +117,12 @@ namespace hopcalc
     friend auto ::log10( const Expression& ) -> Expression;
     friend auto ::sqrt ( const Expression& ) -> Expression;
     friend auto ::pow  ( const Expression&, const Expression& ) -> Expression;
+    friend auto ::pi   () -> Expression;
+    friend auto ::conditional( const Expression&, const Expression&, const Expression& ) -> Expression;
 
   public:
+    Expression( std::vector<char>&& src ): vector( std::move( src ) ) {}
+
     Expression( char );
     Expression( uint8_t );
     Expression( int16_t );
@@ -178,6 +182,16 @@ namespace hopcalc
     Expression  operator || ( const Expression& ) const;
 
     Expression  operator_in ( const Expression& ) const;
+
+    static
+    Expression  Variable( const char* );
+    Expression  Variable( const std::string& );
+
+    std::string to_string() const;
+
+  protected:
+    static
+    auto        to_string( const char*, const char* ) -> std::pair<std::string, unsigned>;
   };
 
   auto  Compile( const char*, const char*, const char* = nullptr ) -> std::vector<char>;

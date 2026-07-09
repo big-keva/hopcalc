@@ -1,10 +1,18 @@
 # include "../hopcalc.hpp"
+# include <mtc/json.h>
 # include <cmath>
 
 template <>
 inline  std::vector<char>* Serialize( std::vector<char>* o, const void* p, size_t l )
 {
   o->insert( o->end(), (const char*)p, (const char*)p + l );
+  return o;
+}
+
+template <>
+inline  std::string* Serialize( std::string* o, const void* p, size_t l )
+{
+  o->append( (const char*)p, (const char*)p + l );
   return o;
 }
 
@@ -53,26 +61,28 @@ namespace hopcalc
 
     hc_skip = 99,
 
-    hc_abs   = 200,
-    hc_floor = 201,
-    hc_ceil  = 202,
-    hc_round = 203,
-    hc_acos  = 204,
-    hc_asin  = 205,
-    hc_atan  = 206,
-    hc_cos   = 207,
-    hc_cosh  = 208,
-    hc_sin   = 209,
-    hc_sinh  = 210,
-    hc_tan   = 211,
-    hc_tanh  = 212,
-    hc_exp   = 213,
-    hc_log   = 214,
-    hc_log2  = 215,
-    hc_log10 = 216,
-    hc_pow   = 217,
-    hc_sqrt  = 218,
-    hc_pi    = 219
+    hc_abs   = 100,
+    hc_floor = 101,
+    hc_ceil  = 102,
+    hc_round = 103,
+    hc_acos  = 104,
+    hc_asin  = 105,
+    hc_atan  = 106,
+    hc_cos   = 107,
+    hc_cosh  = 108,
+    hc_sin   = 109,
+    hc_sinh  = 110,
+    hc_tan   = 111,
+    hc_tanh  = 112,
+    hc_exp   = 113,
+    hc_log   = 114,
+    hc_log2  = 115,
+    hc_log10 = 116,
+    hc_pow   = 117,
+    hc_sqrt  = 118,
+    hc_pi    = 119,
+
+    hc_end   = 120
   };
 
   static const struct
@@ -133,6 +143,65 @@ namespace hopcalc
     { "pi",    0, hc_pi    },
     { "pow",   2, hc_pow   },
     { "sqrt",  1, hc_sqrt  }
+  };
+
+  static const char* OpNames[] =
+  {
+    nullptr,
+
+    nullptr,
+    "-",
+    nullptr,
+
+    "*",  "/",  "%",
+
+    "+",  "-",
+
+    "<<", ">>",
+
+    "<",  "<=", ">",  ">=", "==", "!=",
+
+    "in",
+
+    "&",  "^",  "|",
+
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,
+
+    "&&", "||",
+
+    ":",  "?",  "=",
+
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,  nullptr,
+    nullptr,
+
+    "abs",
+    "floor",
+    "ceil",
+    "round",
+    "acos",
+    "asin",
+    "atan",
+    "cos",
+    "cosh",
+    "sin",
+    "sinh",
+    "tan",
+    "tanh",
+    "exp",
+    "log",
+    "log2",
+    "log10",
+    "pow",
+    "sqrt",
+    "pi"
   };
 
   static mtc::zval zero( 0 );
@@ -379,6 +448,49 @@ namespace hopcalc
       upset.get_type() == mtc::zval::z_array_zval   ? in( what, *upset.get_array_zval() ) : what.eq( upset );
   }
 
+  bool  GetInplace( std::vector<char>& o, unsigned c, const std::vector<char>& l, const std::vector<char>& r )
+  {
+    if ( IsConstant( l ) && IsConstant( r ) )
+    {
+      mtc::zval lval;
+      mtc::zval rval;
+
+      lval.FetchFrom( l.data() + 1 );
+      rval.FetchFrom( r.data() + 1 );
+
+      switch ( c )
+      {
+        case hc_mul:  return o.clear(), (lval *= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_div:  return o.clear(), (lval /= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_mod:  return o.clear(), (lval %= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_add:  return o.clear(), (lval += rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_sub:  return o.clear(), (lval -= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_shl:  return o.clear(), (lval <<= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_shr:  return o.clear(), (lval >>= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+        case hc_lt:   return o.clear(), mtc::zval( lval.lt( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_le:   return o.clear(), mtc::zval( lval.le( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_gt:   return o.clear(), mtc::zval( lval.gt( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_ge:   return o.clear(), mtc::zval( lval.ge( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+        case hc_eq:   return o.clear(), mtc::zval( lval.eq( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_ne:   return o.clear(), mtc::zval( lval.ne( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+        case hc_in:   return o.clear(), mtc::zval( in( lval, rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+        case hc_b_and:return o.clear(), (lval &= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_b_xor:return o.clear(), (lval ^= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_b_or: return o.clear(), (lval |= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+        case hc_l_and:return o.clear(), mtc::zval( lval.ne( 0 ) && rval.ne( 0 ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+        case hc_l_or: return o.clear(), mtc::zval( lval.ne( 0 ) || rval.ne( 0 ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+        default:      break;
+      }
+    }
+    return false;
+  }
+
   auto  Compile( const char* pbeg, const char* pend, const char* orig ) -> std::vector<char>
   {
     auto        output = std::vector<char>();
@@ -449,43 +561,8 @@ namespace hopcalc
       auto  rexp = Compile( NoSpace( divbeg + divlen, pend ), pend, orig );
 
     // выполнить предвычисление значений, если возможно
-      if ( IsConstant( lexp ) && IsConstant( rexp ) )
-      {
-        mtc::zval lval;
-        mtc::zval rval;
-
-        lval.FetchFrom( (const char*)lexp.data() + 1 );
-        rval.FetchFrom( (const char*)rexp.data() + 1 );
-
-        switch ( opcode )
-        {
-          case hc_mul:  return std::move( *(lval *= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_div:  return std::move( *(lval /= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_mod:  return std::move( *(lval %= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_add:  return std::move( *(lval += rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_sub:  return std::move( *(lval -= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_shl:  return std::move( *(lval <<= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_shr:  return std::move( *(lval >>= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-
-          case hc_lt:   return std::move( *mtc::zval( lval.lt( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_le:   return std::move( *mtc::zval( lval.le( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_gt:   return std::move( *mtc::zval( lval.gt( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_ge:   return std::move( *mtc::zval( lval.ge( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-
-          case hc_eq:   return std::move( *mtc::zval( lval.eq( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_ne:   return std::move( *mtc::zval( lval.ne( rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-
-          case hc_in:   return std::move( *mtc::zval( in( lval, rval ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-
-          case hc_b_and:return std::move( *(lval &= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_b_xor:return std::move( *(lval ^= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_b_or: return std::move( *(lval |= rval).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-
-          case hc_l_and:return std::move( *mtc::zval( lval.ne( 0 ) && rval.ne( 0 ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          case hc_l_or: return std::move( *mtc::zval( lval.ne( 0 ) || rval.ne( 0 ) ).Serialize( ::Serialize( &output, uint8_t(hc_const) ) ) );
-          default:      break;
-        }
-      }
+      if ( GetInplace( output, opcode, lexp, rexp ) )
+        return output;
 
       if ( opcode != hc_colon )
         output.push_back( opcode );
@@ -882,8 +959,11 @@ namespace hopcalc
 # define derive_binary_operator( op, code )                       \
   Expression& Expression::operator op ( const Expression& xp )    \
   {                                                               \
-    insert( begin(), char(hc_##code) );                           \
-    insert( end(), xp.begin(), xp.end() );                        \
+    if ( !GetInplace( *this, hc_##code, *this, xp ) )             \
+    {                                                             \
+      insert( begin(), char(hc_##code) );                         \
+      insert( end(), xp.begin(), xp.end() );                      \
+    }                                                             \
     return *this;                                                 \
   }
 
@@ -902,9 +982,14 @@ namespace hopcalc
 # define derive_binary_operator( op, code )                           \
   Expression  Expression::operator op ( const Expression& xp ) const  \
   {                                                                   \
-    std::vector<char> out{ char(hc_##code) };                         \
-    out.insert( out.end(), begin(), end() );                          \
-    out.insert( out.end(), xp.begin(), xp.end() );                    \
+    std::vector<char> out;                                            \
+                                                                      \
+    if ( !GetInplace( out, hc_##code, *this, xp ) )                   \
+    {                                                                 \
+      out.emplace_back( char(hc_##code) );                            \
+      out.insert( out.end(), begin(), end() );                        \
+      out.insert( out.end(), xp.begin(), xp.end() );                  \
+    }                                                                 \
     return out;                                                       \
   }
 
@@ -915,6 +1000,9 @@ namespace hopcalc
   derive_binary_operator( -, sub )
   derive_binary_operator( <<, shl )
   derive_binary_operator( >>, shr )
+  derive_binary_operator( &, b_and )
+  derive_binary_operator( ^, b_xor )
+  derive_binary_operator( |, b_or )
   derive_binary_operator( <, lt )
   derive_binary_operator( <=, le )
   derive_binary_operator( >, gt )
@@ -927,10 +1015,165 @@ namespace hopcalc
 
   Expression  Expression::operator_in( const Expression& xp ) const
   {
-    std::vector<char> out{ char(hc_in) };
-    out.insert( out.end(), begin(), end() );
-    out.insert( out.end(), xp.begin(), xp.end() );
+    std::vector<char> out;
+
+    if ( !GetInplace( out, hc_in, *this, xp ) )
+    {
+      out.emplace_back( char(hc_in) );
+      out.insert( out.end(), begin(), end() );
+      out.insert( out.end(), xp.begin(), xp.end() );
+    }
     return out;
+  }
+
+  Expression  Expression::Variable( const char* var )
+  {
+    std::vector out{ char(hc_var) };
+
+    return std::move( *::Serialize( &out, var ) );
+  }
+
+  Expression  Expression::Variable( const std::string& var )
+  {
+    return Variable( var.c_str() );
+  }
+
+  std::string Expression::to_string() const
+  {
+    return to_string( data(), data() + size() ).first;
+  }
+
+  auto  Expression::to_string( const char* src, const char* end ) -> std::pair<std::string, unsigned>
+  {
+    if ( src >= end )
+      return { "", hc_end };
+
+    switch ( auto opcode = (unsigned char)*src++ )
+    {
+      case hc_const:
+      {
+        mtc::zval   zvalue;
+        std::string as_str;
+
+        if ( zvalue.FetchFrom( mtc::sourcebuf( src, end - src ).ptr() ) == nullptr )
+          throw std::invalid_argument( "invalid expression buffer" );
+
+        return { *mtc::json::Print( &as_str, zvalue ), hc_const };
+      }
+      case hc_neg:
+        return { '-' + to_string( src, end ).first, hc_neg };
+
+      case hc_var:
+      {
+        size_t  length;
+
+        if ( (src = ::FetchFrom( src, length )) == nullptr )
+          throw std::invalid_argument( "invalid expression buffer" );
+        if ( src + length > end )
+          throw std::invalid_argument( "invalid expression buffer" );
+        if ( length > 0x1000 )
+          throw std::invalid_argument( "too long variable name" );
+        return { "$" + std::string( src, length ), hc_var };
+      }
+
+      case hc_mul:    case hc_div:  case hc_mod:
+      case hc_add:    case hc_sub:
+      case hc_shl:    case hc_shr:
+      case hc_lt:     case hc_le:
+      case hc_gt:     case hc_ge:
+      case hc_eq:     case hc_ne:
+      case hc_in:
+      case hc_b_and:  case hc_b_xor:  case hc_b_or:
+      case hc_l_and:  case hc_l_or:
+      {
+        auto  divide = JumpOver( src, end );
+
+        if ( divide != nullptr )
+        {
+          auto  lvalue = to_string( src, divide );
+          auto  rvalue = to_string( divide, end );
+
+          if ( lvalue.second > opcode )
+            lvalue.first = '(' + lvalue.first + ')';
+          if ( rvalue.second > opcode )
+            rvalue.first = '(' + rvalue.first + ')';
+
+          return { lvalue.first + ' ' + OpNames[opcode] + ' ' + rvalue.first, opcode };
+        }
+        throw std::invalid_argument( "invalid expression buffer" );
+      }
+
+      case hc_quest:
+      {
+        auto  ltp = JumpOver( src, end );
+        auto  rtp = JumpOver( ltp, end );
+
+        if ( rtp != nullptr )
+        {
+          auto  xvalue = to_string( src, ltp );
+          auto  lvalue = to_string( ltp, rtp );
+          auto  rvalue = to_string( rtp, end );
+
+          if ( xvalue.second > opcode )
+            xvalue.first = '(' + xvalue.first + ')';
+          if ( lvalue.second > opcode )
+            lvalue.first = '(' + lvalue.first + ')';
+          if ( rvalue.second > opcode )
+            rvalue.first = '(' + rvalue.first + ')';
+
+          return { xvalue.first + ' ' + OpNames[opcode] + ' ' + lvalue.first + " : " + rvalue.first, opcode };
+        }
+        throw std::invalid_argument( "invalid expression buffer" );
+      }
+
+      case hc_assign:
+      case hc_skip:
+        throw std::invalid_argument( "unexpected operation" );
+
+      case hc_abs:
+      case hc_floor:
+      case hc_ceil:
+      case hc_round:
+      case hc_acos:
+      case hc_asin:
+      case hc_atan:
+      case hc_cos:
+      case hc_cosh:
+      case hc_sin:
+      case hc_sinh:
+      case hc_tan:
+      case hc_tanh:
+      case hc_exp:
+      case hc_log:
+      case hc_log2:
+      case hc_log10:
+      case hc_sqrt:
+      {
+        auto  subexp = to_string( src, end );
+
+        return { std::string( OpNames[opcode] ) + "(" + subexp.first + ")", hc_const };
+      }
+
+      case hc_pow:
+      {
+        auto  divide = JumpOver( src, end );
+
+        if ( divide != nullptr )
+        {
+          auto  lvalue = to_string( src, divide );
+          auto  rvalue = to_string( divide, end );
+
+          return { "pow(" + lvalue.first + ", " + rvalue.first + ")", hc_const };
+        }
+        throw std::invalid_argument( "invalid expression buffer" );
+      }
+      case hc_pi:
+      {
+        return { "pi()", hc_const };
+      }
+      default:
+        throw std::invalid_argument( "unexpected operation" );
+    }
   }
 
 # if 0
@@ -1059,5 +1302,19 @@ hopcalc::Expression pow( const hopcalc::Expression& x1, const hopcalc::Expressio
   std::vector out{ char(hopcalc::hc_pow) };
   out.insert( out.end(), x1.begin(), x1.end() );
   out.insert( out.end(), x2.begin(), x2.end() );
+  return out;
+}
+
+hopcalc::Expression pi()
+{
+  return std::vector{ char(hopcalc::hc_pi) };
+}
+
+hopcalc::Expression conditional( const hopcalc::Expression& x1, const hopcalc::Expression& x2, const hopcalc::Expression& x3 )
+{
+  std::vector out{ char(hopcalc::hc_quest) };
+  out.insert( out.end(), x1.begin(), x1.end() );
+  out.insert( out.end(), x2.begin(), x2.end() );
+  out.insert( out.end(), x3.begin(), x3.end() );
   return out;
 }
