@@ -181,11 +181,10 @@ namespace hopcalc
     Expression  operator && ( const Expression& ) const;
     Expression  operator || ( const Expression& ) const;
 
-    Expression  operator_in ( const Expression& ) const;
+    Expression  in ( const Expression& ) const;
 
-    static
-    Expression  Variable( const char* );
-    Expression  Variable( const std::string& );
+    static  Expression  Variable( const char* );
+    static  Expression  Variable( const std::string& );
 
     std::string to_string() const;
 
@@ -208,8 +207,6 @@ namespace hopcalc
   inline
   auto  Evaluate( const std::vector<char>& prog, const WUserData& func = {} ) -> mtc::zval
     {  return Evaluate( prog.data(), prog.data() + prog.size(), func );  }
-
-  // Expression implementation
 
 }
 

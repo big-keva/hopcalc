@@ -133,8 +133,40 @@ TestItEasy::RegisterFunc  storage_fs( []()
         }
         SECTION( "it pre-calculates constant expressions" )
         {
+          REQUIRE( Expression( Compile( "1 * 3" ) ).to_string() == "3" );
+          REQUIRE( Expression( Compile( "6 / 2" ) ).to_string() == "3" );
+          REQUIRE( Expression( Compile( "6 % 2" ) ).to_string() == "0" );
           REQUIRE( Expression( Compile( "3 + 4" ) ).to_string() == "7" );
-          REQUIRE( Expression( Compile( "1 & 3" ) ).to_string() == "1" );
+          REQUIRE( Expression( Compile( "1 - 3" ) ).to_string() == "-2" );
+          REQUIRE( Expression( Compile( "3 << 1" ) ).to_string() == "6" );
+          REQUIRE( Expression( Compile( "3 >> 1" ) ).to_string() == "1" );
+          REQUIRE( Expression( Compile( "3 & 1" ) ).to_string() == "1" );
+          REQUIRE( Expression( Compile( "3 ^ 1" ) ).to_string() == "2" );
+          REQUIRE( Expression( Compile( "2 | 1" ) ).to_string() == "3" );
+
+          REQUIRE( Expression( Compile( "2 == 2 && \"a\" == \"a\"" ) ).to_string() == "true" );
+          REQUIRE( Expression( Compile( "2 == 2 && \"a\" == \"b\"" ) ).to_string() == "false" );
+          REQUIRE( Expression( Compile( "2 == 3 && \"a\" == \"a\"" ) ).to_string() == "false" );
+          REQUIRE( Expression( Compile( "2 == 3 && \"a\" == \"b\"" ) ).to_string() == "false" );
+
+          REQUIRE( Expression( Compile( "2 == 2 || \"a\" == \"a\"" ) ).to_string() == "true" );
+          REQUIRE( Expression( Compile( "2 == 2 || \"a\" == \"b\"" ) ).to_string() == "true" );
+          REQUIRE( Expression( Compile( "2 == 3 || \"a\" == \"a\"" ) ).to_string() == "true" );
+          REQUIRE( Expression( Compile( "2 == 3 || \"a\" == \"b\"" ) ).to_string() == "false" );
+
+          REQUIRE( Expression( Compile( "1 in [1, 2, 3]" ) ).to_string() == "true" );
+          REQUIRE( Expression( Compile( "1 in [2, 3, 4]" ) ).to_string() == "false" );
+
+          REQUIRE( Expression( Compile( "true && $a" ) ).to_string() == "$a" );
+          REQUIRE( Expression( Compile( "0 && $a" ) ).to_string() == "0" );
+          REQUIRE( Expression( Compile( "$a && true" ) ).to_string() == "$a" );
+
+          REQUIRE( Expression( Compile( "true || $a" ) ).to_string() == "true" );
+          REQUIRE( Expression( Compile( "$a || true" ) ).to_string() == "$a || true" );
+          REQUIRE( Expression( Compile( "$a || false" ) ).to_string() == "$a" );
+
+          REQUIRE( Expression( Compile( "$a == 2 ? \"zero\" : 1 + 3" ) ).to_string() == "$a == 2 ? \"zero\" : 4" );
+          REQUIRE( Expression( Compile( "2 == 2 ? \"zero\" : 1 + 3" ) ).to_string() == "\"zero\"" );
         }
       }
       SECTION( "Evaluate() evaluates compiled expressions" )
@@ -193,6 +225,8 @@ TestItEasy::RegisterFunc  storage_fs( []()
           REQUIRE( Evaluate( Compile( "2 * ((7 ? 1 : \"one\") + 11)" ) ).eq( 24 ) );
           REQUIRE( Evaluate( Compile( "(1 == 1) ? \"zero\" : 0" ) ).eq( "zero" ) );
           REQUIRE( Evaluate( Compile( "(1 == 2) ? \"zero\" : 0" ) ).eq( 0 ) );
+
+          REQUIRE( Expression( Compile( "$a == 2 ? \"zero\" : 1" ) ).to_string() == "$a == 2 ? \"zero\" : 1" );
         }
         SECTION( "assignment" )
         {
@@ -221,11 +255,11 @@ TestItEasy::RegisterFunc  storage_fs( []()
         {
           REQUIRE( Evaluate( Expression( "aaa" ) += "bbb" ).eq( "aaabbb" ) );
           REQUIRE( Evaluate( Expression( 721 ) + 2 ).eq( 723 ) );
-          REQUIRE( Evaluate( Expression( 'b' ).operator_in( Expression( "abc" ) ) ).eq( true ) );
-          REQUIRE( Evaluate( Expression( 'q' ).operator_in( Expression( "abc" ) ) ).eq( false ) );
-          REQUIRE( Evaluate( Expression( "b" ).operator_in( Expression( { "a", "b", "c" } ) ) ).eq( true ) );
-          REQUIRE( Evaluate( Expression( 7 ).operator_in( mtc::array_int32{ 2, 3, 11 } ) ).eq( false ) );
-          REQUIRE( Evaluate( Expression( 11 ).operator_in( mtc::array_int32{ 2, 3, 11 } ) ).eq( true ) );
+          REQUIRE( Evaluate( Expression( 'b' ).in( Expression( "abc" ) ) ).eq( true ) );
+          REQUIRE( Evaluate( Expression( 'q' ).in( Expression( "abc" ) ) ).eq( false ) );
+          REQUIRE( Evaluate( Expression( "b" ).in( Expression( { "a", "b", "c" } ) ) ).eq( true ) );
+          REQUIRE( Evaluate( Expression( 7 ).  in( mtc::array_int32{ 2, 3, 11 } ) ).eq( false ) );
+          REQUIRE( Evaluate( Expression( 11 ). in( mtc::array_int32{ 2, 3, 11 } ) ).eq( true ) );
           REQUIRE( Evaluate( sqrt( Expression( 81 ) ) ).eq( 9 ) );
           REQUIRE( Evaluate( sqrt( Expression( "abc" ) ) ).get_type() == mtc::zval::z_double );
           REQUIRE( Evaluate( sqrt( Expression( "abc" ) ) ).eq( 0 ) );
@@ -237,6 +271,7 @@ TestItEasy::RegisterFunc  storage_fs( []()
 
           SECTION( "- functions" )
           {
+            REQUIRE( ( sin( Expression( 1.57 ) ) / pi() ).to_string() == "sin(1.57) / pi()" );
             REQUIRE( ( sin( Expression( 1.57 ) ) / pi() ).to_string() == "sin(1.57) / pi()" );
           }
 
@@ -274,10 +309,11 @@ TestItEasy::RegisterFunc  storage_fs( []()
             REQUIRE( (Expression( 3 ) ^= 1).to_string() == "2" );
             REQUIRE( (Expression( 2 ) |= 1).to_string() == "3" );
 
-            REQUIRE( (Expression( 1 ).operator_in( std::vector<int>{ 1, 2, 3 } )).to_string() == "true" );
+            REQUIRE( (Expression( 1 ).in( std::vector<int>{ 1, 2, 3 } )).to_string() == "true" );
           }
 
-          REQUIRE( conditional( Expression::Variable( "param" ) == 3, "a", "b" ).to_string() == "$param == 3 ? \"a\" : \"b\"" );
+          REQUIRE( conditional( Expression::Variable( "param" ) == 3, "a", "b" ).to_string()
+            == "$param == 3 ? \"a\" : \"b\"" );
         }
       }
     }

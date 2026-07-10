@@ -333,7 +333,7 @@ namespace hopcalc
     if ( auto tok = NoSpace( endptr, pend ); tok != pend )
       throw SyntaxError( "unexpected token", tok - orig );
 
-    if ( std::abs(dvalue - std::trunc(dvalue)) < std::numeric_limits<double>::epsilon() * std::abs(dvalue) )
+    if ( std::abs(dvalue - std::trunc(dvalue)) <= std::numeric_limits<double>::epsilon() * std::abs(dvalue) )
     {
       if ( dvalue >= 0 )
       {
@@ -448,44 +448,94 @@ namespace hopcalc
       upset.get_type() == mtc::zval::z_array_zval   ? in( what, *upset.get_array_zval() ) : what.eq( upset );
   }
 
+  const char*  JumpOver( const char* pbeg, const char* pend );
+
   bool  GetInplace( std::vector<char>& o, unsigned c, const std::vector<char>& l, const std::vector<char>& r )
   {
-    if ( IsConstant( l ) && IsConstant( r ) )
+    if ( IsConstant( l ) )
     {
       mtc::zval lval;
       mtc::zval rval;
 
       lval.FetchFrom( l.data() + 1 );
+
+      if ( c == hc_quest )
+      {
+        o.clear();
+
+        if ( lval.ne( 0 ) ) o.insert( o.end(), r.data(), JumpOver( r.data(), r.data() + r.size() ) );
+          else o.insert( o.end(), JumpOver( r.data(), r.data() + r.size() ), r.data() + r.size() );
+        return true;
+      }
+
+      if ( IsConstant( r ) )
+      {
+        rval.FetchFrom( r.data() + 1 );
+
+        switch ( c )
+        {
+          case hc_mul:  return o.clear(), (lval *= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_div:  return o.clear(), (lval /= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_mod:  return o.clear(), (lval %= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_add:  return o.clear(), (lval += rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_sub:  return o.clear(), (lval -= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_shl:  return o.clear(), (lval <<= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_shr:  return o.clear(), (lval >>= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+          case hc_lt:   return o.clear(), mtc::zval( lval.lt( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_le:   return o.clear(), mtc::zval( lval.le( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_gt:   return o.clear(), mtc::zval( lval.gt( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_ge:   return o.clear(), mtc::zval( lval.ge( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+          case hc_eq:   return o.clear(), mtc::zval( lval.eq( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_ne:   return o.clear(), mtc::zval( lval.ne( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+          case hc_in:   return o.clear(), mtc::zval( in( lval, rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+          case hc_b_and:return o.clear(), (lval &= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_b_xor:return o.clear(), (lval ^= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_b_or: return o.clear(), (lval |= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+          case hc_l_and:return o.clear(), mtc::zval( lval.ne( 0 ) && rval.ne( 0 ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+          case hc_l_or: return o.clear(), mtc::zval( lval.ne( 0 ) || rval.ne( 0 ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
+
+          default:      return false;
+        }
+      }
+
+      switch ( c )
+      {
+        case hc_l_and:
+          if ( lval.eq( 0 ) ) {  o.clear();  lval.Serialize( ::Serialize( &o, uint8_t(hc_const) ) );  }
+            else o = r;
+          return true;
+
+        case hc_l_or:
+          if ( lval.ne( 0 ) ) {  o.clear();  lval.Serialize( ::Serialize( &o, uint8_t(hc_const) ) );  }
+            else o = r;
+          return true;
+
+        default:  break;
+      }
+    }
+      else
+    if ( IsConstant( r ) )
+    {
+      mtc::zval rval;
+
       rval.FetchFrom( r.data() + 1 );
 
       switch ( c )
       {
-        case hc_mul:  return o.clear(), (lval *= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_div:  return o.clear(), (lval /= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_mod:  return o.clear(), (lval %= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_add:  return o.clear(), (lval += rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_sub:  return o.clear(), (lval -= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_shl:  return o.clear(), (lval <<= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_shr:  return o.clear(), (lval >>= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-
-        case hc_lt:   return o.clear(), mtc::zval( lval.lt( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_le:   return o.clear(), mtc::zval( lval.le( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_gt:   return o.clear(), mtc::zval( lval.gt( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_ge:   return o.clear(), mtc::zval( lval.ge( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-
-        case hc_eq:   return o.clear(), mtc::zval( lval.eq( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_ne:   return o.clear(), mtc::zval( lval.ne( rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-
-        case hc_in:   return o.clear(), mtc::zval( in( lval, rval ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-
-        case hc_b_and:return o.clear(), (lval &= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_b_xor:return o.clear(), (lval ^= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_b_or: return o.clear(), (lval |= rval).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-
-        case hc_l_and:return o.clear(), mtc::zval( lval.ne( 0 ) && rval.ne( 0 ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-        case hc_l_or: return o.clear(), mtc::zval( lval.ne( 0 ) || rval.ne( 0 ) ).Serialize( ::Serialize( &o, uint8_t(hc_const) ) ), true;
-
-        default:      break;
+        case hc_l_and:
+          if ( rval.ne( 0 ) )
+            return o = l, true;
+          break;
+        case hc_l_or:
+          if ( rval.eq( 0 ) )
+            return o = l, true;
+        default:
+          break;
       }
     }
     return false;
@@ -1013,7 +1063,7 @@ namespace hopcalc
   derive_binary_operator( ||, l_or )
 # undef derive_binary_operator
 
-  Expression  Expression::operator_in( const Expression& xp ) const
+  Expression  Expression::in( const Expression& xp ) const
   {
     std::vector<char> out;
 
@@ -1265,7 +1315,7 @@ namespace hopcalc
 
     return Evaluate( result, pbeg, pend, func ), result;
   }
-  # endif
+# endif
 
 }
 
